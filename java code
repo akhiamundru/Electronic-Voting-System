@@ -1,0 +1,127 @@
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+public class Main{
+    // In-memory databases (simulation)
+    static Map<String, Voter> voterDb = new HashMap<>();
+    static Map<String, String> voteDb = new HashMap<>();
+
+    static SecretKey secretKey;
+
+    public static void main(String[] args) throws Exception {
+        // Generate a secret key for encryption
+        secretKey = KeyGenerator.getInstance("AES").generateKey();
+
+        // Registering voters
+        String voter1 = registerVoter("Alice");
+        String voter2 = registerVoter("Bob");
+
+        // Casting votes
+        castVote(voter1, "Candidate A");
+        castVote(voter2, "Candidate B");
+
+        // Trying to vote again (should fail)
+        castVote(voter1, "Candidate A");
+
+        // Counting votes
+        countVotes();
+    }
+
+    // Step 1: Register Voters
+    public static String registerVoter(String voterName) {
+        String voterId = UUID.randomUUID().toString();
+        Voter voter = new Voter(voterName, false);
+        voterDb.put(voterId, voter);
+        System.out.println("Voter '" + voterName + "' registered with ID: " + voterId);
+        return voterId;
+    }
+
+    // Step 2: Cast Vote (with encryption)
+    public static void castVote(String voterId, String candidate) throws Exception {
+        if (!voterDb.containsKey(voterId)) {
+            System.out.println("Voter not registered!");
+            return;
+        }
+        Voter voter = voterDb.get(voterId);
+        if (voter.hasVoted) {
+            System.out.println("Voter has already cast their vote!");
+            return;
+        }
+
+        // Encrypt the vote using the secret key
+        String encryptedVote = encryptVote(candidate);
+
+        // Store the encrypted vote
+        voteDb.put(voterId, encryptedVote);
+        
+        // Mark voter as having voted
+        voter.hasVoted = true;
+        System.out.println("Vote cast successfully by voter ID: " + voterId);
+    }
+
+    // Step 3: Encrypt Vote
+    public static String encryptVote(String vote) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES");
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey);
+        byte[] encryptedBytes = cipher.doFinal(vote.getBytes());
+        return bytesToHex(encryptedBytes);
+    }
+
+    // Step 4: Decrypt Vote (used for vote counting)
+    public static String decryptVote(String encryptedVote) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES");
+        cipher.init(Cipher.DECRYPT_MODE, secretKey);
+        byte[] decryptedBytes = cipher.doFinal(hexToBytes(encryptedVote));
+        return new String(decryptedBytes);
+    }
+
+    // Step 5: Count Votes
+    public static void countVotes() throws Exception {
+        System.out.println("\nCounting votes...");
+        Map<String, Integer> results = new HashMap<>();
+
+        for (String encryptedVote : voteDb.values()) {
+            String decryptedVote = decryptVote(encryptedVote);
+            results.put(decryptedVote, results.getOrDefault(decryptedVote, 0) + 1);
+        }
+
+        for (Map.Entry<String, Integer> entry : results.entrySet()) {
+            System.out.println("Candidate: " + entry.getKey() + ", Votes: " + entry.getValue());
+        }
+    }
+
+    // Utility method to convert bytes to hex (for storage)
+    public static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
+
+    // Utility method to convert hex to bytes (for decryption)
+    public static byte[] hexToBytes(String hex) {
+        int len = hex.length();
+        byte[] bytes = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            bytes[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4)
+                    + Character.digit(hex.charAt(i+1), 16));
+        }
+        return bytes;
+    }
+}
+
+// Voter class to hold voter details
+class Voter {
+    String name;
+    boolean hasVoted;
+
+    public Voter(String name, boolean hasVoted) {
+        this.name = name;
+        this.hasVoted = hasVoted;
+    }
+}
